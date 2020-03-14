@@ -8,6 +8,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.PublicKey;
 import java.security.SecureRandom;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
@@ -157,7 +159,7 @@ class ClientHandler extends Thread {
         System.out.println("Client connected.");
     }
 
-    public void post(boolean boardToPost) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException{
+    public void post(boolean boardToPost) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException{
         //Extract arguments
         PublicKey cliPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
         String message = this.dataIn.nextLine();
@@ -183,13 +185,19 @@ class ClientHandler extends Thread {
 
         byte verifyMessage[] = md.digest(message.getBytes());
 
+        //Verify signature
+        Signature signature = Signature.getInstance("SHA1withRSA");
+        signature.initVerify(cliPublicKey);
+        signature.update(message.getBytes());
+        boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
+
         //Check references validity
         boolean refValidity = true;
         for (int i=0; i<references.length; i++) {
             if (!(references[i]<postCount.get())) refValidity=false;
         }
 
-        if (Arrays.equals(hashedMessage, verifyMessage) && refValidity) {
+        if (Arrays.equals(hashedMessage, verifyMessage) && refValidity && verifySignature) {
             if (boardToPost) {
                 Triplet triplet = new Triplet(message, references, postCount);
                 registeredUsers.get(cliPublicKey).add(triplet);

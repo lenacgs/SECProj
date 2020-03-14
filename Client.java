@@ -171,6 +171,7 @@ public class Client{
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
         this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
+        this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
 
     }
 
