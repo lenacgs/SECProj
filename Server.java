@@ -15,21 +15,23 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Scanner;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class Server {
-    HashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
-    HashMap<Integer, Triplet> generalBoard;
-    HashMap<PublicKey, SecureRandom> usersSeeds;
-    int postCount;
+    ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
+    ConcurrentHashMap<Integer, Triplet> generalBoard;
+    ConcurrentHashMap<PublicKey, SecureRandom> usersSeeds;
+    AtomicInteger postCount;
     public static void main(String args[]) throws IOException{
         Server server = new Server();
 
         ServerSocket serverSocket = new ServerSocket(1234);
-        server.registeredUsers = new HashMap<PublicKey, ArrayList<Triplet>>();
-        server.generalBoard = new HashMap<Integer, Triplet>();
-        server.usersSeeds = new HashMap<PublicKey, SecureRandom>();
-        server.postCount = 0;
+        server.registeredUsers = new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>();
+        server.generalBoard = new ConcurrentHashMap<Integer, Triplet>();
+        server.usersSeeds = new ConcurrentHashMap<PublicKey, SecureRandom>();
+        server.postCount = new AtomicInteger(0);
         
         while (true) {
             Socket serSocket = null;
@@ -79,12 +81,12 @@ class ClientHandler extends Thread {
     Scanner dataIn;
     PrintStream dataOut;
     Socket s;
-    HashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
-    HashMap<Integer, Triplet> generalBoard;
-    HashMap<PublicKey, SecureRandom> usersSeeds;
-    int postCount;
+    ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
+    ConcurrentHashMap<Integer, Triplet> generalBoard;
+    ConcurrentHashMap<PublicKey, SecureRandom> usersSeeds;
+    AtomicInteger postCount;
 
-    public ClientHandler(Socket s, Scanner dataIn, PrintStream dataOut, HashMap<PublicKey, ArrayList<Triplet>> registeredUsers, HashMap<Integer, Triplet> generalBoard, HashMap<PublicKey, SecureRandom> usersSeeds, int postCount) {
+    public ClientHandler(Socket s, Scanner dataIn, PrintStream dataOut, ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers, ConcurrentHashMap<Integer, Triplet> generalBoard, ConcurrentHashMap<PublicKey, SecureRandom> usersSeeds, AtomicInteger postCount) {
         this.s = s;
         this.dataIn = dataIn;
         this.dataOut = dataOut;
@@ -184,7 +186,7 @@ class ClientHandler extends Thread {
         //Check references validity
         boolean refValidity = true;
         for (int i=0; i<references.length; i++) {
-            if (!(references[i]<postCount)) refValidity=false;
+            if (!(references[i]<postCount.get())) refValidity=false;
         }
 
         if (Arrays.equals(hashedMessage, verifyMessage) && refValidity) {
@@ -195,10 +197,10 @@ class ClientHandler extends Thread {
             }
             else {
                 Triplet triplet = new Triplet(message, references, cliPublicKey);
-                generalBoard.put(postCount, triplet);
+                generalBoard.put(postCount.get(), triplet);
                 System.out.println("Message posted to general.");
             }
-            this.postCount++;
+            this.postCount.incrementAndGet();
         }
         else {
             System.out.println("Message ignored.");
@@ -207,7 +209,7 @@ class ClientHandler extends Thread {
 
     public void read(boolean boardToRead) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException{
         int postsToRead = Integer.parseInt(this.dataIn.nextLine());
-        if (postsToRead <= postCount) {
+        if (postsToRead <= postCount.get()) {
             this.dataOut.println("1");
             if (boardToRead) {
                 PublicKey cliPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
@@ -220,7 +222,7 @@ class ClientHandler extends Thread {
                 }
             }
             else {
-                int tmp = postCount;
+                int tmp = postCount.get();
                 while(postsToRead > 0) {
                     this.dataOut.println(generalBoard.get(tmp-1).msg);
                     postsToRead--;
