@@ -15,8 +15,12 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -194,8 +198,11 @@ class ClientHandler extends Thread {
         //Check references validity
         boolean refValidity = true;
         for (int i=0; i<references.length; i++) {
-            if (!(references[i]<postCount.get())) refValidity=false;
+            if (references[i]>postCount.get()) refValidity=false;
         }
+
+        System.out.println(refValidity);
+        System.out.println(verifySignature);
 
         if (Arrays.equals(hashedMessage, verifyMessage) && refValidity && verifySignature) {
             if (boardToPost) {
@@ -222,6 +229,7 @@ class ClientHandler extends Thread {
             if (boardToRead) {
                 PublicKey cliPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
                 ArrayList<Triplet> messageList = registeredUsers.get(cliPublicKey);
+                Collections.reverse(messageList);
                 for(Triplet t : messageList) {
                     if (postsToRead > 0) {
                         this.dataOut.println(t.msg);
@@ -230,9 +238,10 @@ class ClientHandler extends Thread {
                 }
             }
             else {
-                int tmp = postCount.get();
+                ArrayList<Integer> tmpList = new ArrayList<Integer>(generalBoard.keySet());
+                int tmp = tmpList.size();
                 while(postsToRead > 0) {
-                    this.dataOut.println(generalBoard.get(tmp-1).msg);
+                    this.dataOut.println(generalBoard.get(tmpList.get(tmp-1)).msg);
                     postsToRead--;
                     tmp--;
                 }
