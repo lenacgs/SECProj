@@ -31,12 +31,8 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.Enumeration;
-import java.util.HashMap;
 import java.util.Scanner;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -70,7 +66,7 @@ public class Server {
 
                 System.out.println("New User: " + serSocket);
 
-                ClientHandler tCli = new ClientHandler(serSocket, new Scanner(serSocket.getInputStream()), new PrintStream(serSocket.getOutputStream()), server.registeredUsers, server.generalBoard, server.usersSeeds, server.postCount);
+                ClientHandler tCli = server.new ClientHandler(serSocket, new Scanner(serSocket.getInputStream()), new PrintStream(serSocket.getOutputStream()));
                 tCli.start();
             }
             catch (Exception e) {
