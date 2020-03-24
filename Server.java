@@ -12,6 +12,22 @@ import java.security.Signature;
 import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.X509EncodedKeySpec;
+import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.InvalidKeyException;
+import java.security.KeyPairGenerator;
+import java.security.KeyStoreException;
+import java.security.Key;
+
+import java.security.spec.InvalidKeySpecException;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+
+import java.io.*;
+
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -30,7 +46,12 @@ public class Server {
     ConcurrentHashMap<Integer, Triplet> generalBoard;
     ConcurrentHashMap<PublicKey, SecureRandom> usersSeeds;
     AtomicInteger postCount;
-    public static void main(String args[]) throws IOException{
+
+
+    KeyPair keyPair;
+
+    
+    public static void main(String args[]) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException{
         Server server = new Server();
 
         ServerSocket serverSocket = new ServerSocket(1234);
@@ -38,7 +59,9 @@ public class Server {
         server.generalBoard = new ConcurrentHashMap<Integer, Triplet>();
         server.usersSeeds = new ConcurrentHashMap<PublicKey, SecureRandom>();
         server.postCount = new AtomicInteger(0);
+        server.keyPair = initializeServerKeyPair("public_key","private_key");
         
+
         while (true) {
             Socket serSocket = null;
 
@@ -55,6 +78,57 @@ public class Server {
                 e.printStackTrace();
             }
         }   
+    }
+
+
+    public static KeyPair initializeServerKeyPair(String publicKeyPath,String privateKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException {
+
+        File pubf = new File(publicKeyPath);
+        File privf = new File(privateKeyPath);
+
+        if(pubf.exists() && privf.exists()) {
+
+            FileInputStream fpub = new FileInputStream(publicKeyPath);
+            FileInputStream fpriv = new FileInputStream(privateKeyPath);
+
+            byte[] encodedPub = new byte[fpub.available()];
+            byte[] encodedPriv = new byte[fpriv.available()];
+            fpub.read(encodedPub);
+            fpub.close();
+            fpriv.read(encodedPriv);
+            fpriv.close();
+
+            X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(encodedPub);
+            KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
+            PublicKey pub = keyFacPub.generatePublic(pubSpec);
+
+
+
+            PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(encodedPriv);
+
+            KeyFactory keyFacPriv = KeyFactory.getInstance("RSA");
+            PrivateKey priv = keyFacPriv.generatePrivate(privSpec);
+
+            return new KeyPair(pub,priv);
+        }
+
+
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        KeyPair keyPair = keyGen.generateKeyPair();
+        writeKey(keyPair.getPublic(),publicKeyPath);
+        writeKey(keyPair.getPrivate(),privateKeyPath);
+        return keyPair;
+
+
+    }
+    static void writeKey(Key key, String path) throws IOException, KeyStoreException {
+
+        byte[] encoded = key.getEncoded();
+        FileOutputStream fos = new FileOutputStream(path);
+        fos.write(encoded);
+        fos.close();
+
     }
 }
 
@@ -252,4 +326,6 @@ class ClientHandler extends Thread {
             System.out.println("Not enough posts to read.");
         }
     }
+
+    
 }
