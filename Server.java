@@ -68,7 +68,7 @@ public class Server {
 
     private void loadServerState(){
         Object result;
-        registeredUsers =(result = loadFile(filenames[0]))==null?new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>():(ConcurrentHashMap<PublicKey, ArrayList<Triplet>>)result;
+        registeredUsers = (result = loadFile(filenames[0]))==null?new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>():(ConcurrentHashMap<PublicKey, ArrayList<Triplet>>)result;
         generalBoard = (result = loadFile(filenames[1]))==null?new ConcurrentHashMap<Integer, Triplet>():(ConcurrentHashMap<Integer, Triplet>)result;
         usersSeeds = (result = loadFile(filenames[2]))==null?new ConcurrentHashMap<PublicKey, SecureRandom>():(ConcurrentHashMap<PublicKey, SecureRandom>)result;
         postCount = (result = loadFile(filenames[3]))==null?new AtomicInteger(0):(AtomicInteger)result;
@@ -101,8 +101,11 @@ public class Server {
         Server server = new Server();
 
         ServerSocket serverSocket = new ServerSocket(1234);
+        //Serialization
         server.loadServerState();
-        Runtime.getRuntime().addShutdownHook(server.new UpdateServer(server));
+        Runtime.getRuntime().addShutdownHook(server.new UpdateServer());
+        
+        
         server.keyPair = initializeServerKeyPair("public_key","private_key");
         
 
@@ -128,7 +131,8 @@ public class Server {
         Scanner dataIn;
         PrintStream dataOut;
         Socket s;
-    
+        
+        
         public ClientHandler(Socket s, Scanner dataIn, PrintStream dataOut) {
             this.s = s;
             this.dataIn = dataIn;
@@ -178,6 +182,7 @@ public class Server {
             }
         }
     
+
         public void registerClient() throws NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException{
             //Extract Public Key
             PublicKey cliPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
@@ -193,6 +198,7 @@ public class Server {
     
             //Sucess
             System.out.println("Client connected.");
+            Server.this.saveFile(registeredUsers, Server.filenames[0] + "_tmp");
         }
     
         public void post(boolean boardToPost) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException{
@@ -252,6 +258,13 @@ public class Server {
             else {
                 System.out.println("Message ignored.");
             }
+            
+            if(boardToPost){
+                Server.this.saveFile(usersSeeds, Server.filenames[2] + "_tmp");
+            } else {
+                Server.this.saveFile(generalBoard, Server.filenames[1] + "_tmp");
+            }
+            Server.this.saveFile(postCount, Server.filenames[3] + "_tmp");
         }
     
         public void read(boolean boardToRead) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException{
@@ -287,19 +300,10 @@ public class Server {
     }
 
     class UpdateServer extends Thread{
-        private Server _server;
-        UpdateServer(Server server){
-            setServer(server);
-        }
-        private void setServer(Server server){
-            _server = server;
-        }
-        private Server getServer(){
-            return _server;
-        }
         @Override
         public void run(){
-            getServer().saveServerState();
+            Server.this.saveServerState();
+            Arrays.stream(Server.this.filenames).forEach(filename -> (new File(filename + "_tmp")).delete());
         }
     }
     public static KeyPair initializeServerKeyPair(String publicKeyPath,String privateKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException {
