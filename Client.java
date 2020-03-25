@@ -1,6 +1,8 @@
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
 import java.security.PublicKey;
@@ -14,8 +16,6 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
-import java.security.PrivateKey;
-import java.security.KeyPairGenerator;
 import java.security.KeyStoreException;
 import java.security.Key;
 import java.security.spec.PKCS8EncodedKeySpec;
@@ -28,6 +28,8 @@ import java.security.spec.InvalidKeySpecException;
 
 public class Client{
 
+    private PublicKey serPublicKey;
+    private ArrayList<byte[]> serSeeds;
     private KeyPair cliKeyPair;
     private SecureRandom cliSr;
     int clientId;
@@ -43,6 +45,7 @@ public class Client{
             String cliMessage;
             String cliReference;
             String[] cliReferenceArray;
+            String cliKeyFile;
             boolean actionLoop = true;
             int id;
             if(args.length > 0) {
@@ -84,8 +87,28 @@ public class Client{
                         cli.postGeneral(cli.getPublicKey(), cliMessage, cliReferenceArray);
                         break;
                     case 3: 
-                        System.out.println("Number of posts to read: ");
-                        cli.read(cli.getPublicKey(), Integer.parseInt(cli.cliScanner.nextLine()));
+                        System.out.println("Public Key associated with announcement board: ");
+                        cliKeyFile = cli.cliScanner.nextLine();
+
+                        File pubf = new File(cliKeyFile);
+                        if(pubf.exists()) {
+
+                            FileInputStream fpub = new FileInputStream(cliKeyFile);
+                
+                            byte[] encodedPub = new byte[fpub.available()];
+                            fpub.read(encodedPub);
+                            fpub.close();
+                
+                            X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(encodedPub);
+                            KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
+                            PublicKey pub = keyFacPub.generatePublic(pubSpec);
+
+                            System.out.println("Number of posts to read: ");
+                            cli.read(pub, Integer.parseInt(cli.cliScanner.nextLine()));
+                        }
+                        else{
+                            System.out.println("Error with key file input.");
+                        }
                         break;
                     case 4: 
                         System.out.println("Number of posts to read: ");
@@ -116,8 +139,9 @@ public class Client{
 
         this.clientId = id;
 
-        this.cliKeyPair = initializeClientKeyPair("clientPublicKey" + this.clientId,"clientPrivateKey" + this.clientId);
+        this.cliKeyPair = initializeClientKeyPair("clientPublicKey" + this.clientId + ".key","clientPrivateKey" + this.clientId + ".key");
 
+        this.serSeeds = new ArrayList<byte[]>();
         //Communication
         this.cliScanner = new Scanner(System.in);
         this.cliSocket = new Socket("127.0.0.1", 1234);
@@ -134,17 +158,18 @@ public class Client{
         return  this.cliKeyPair.getPrivate();
     }
 
-    public void register(PublicKey key) throws IOException {
+    public void register(PublicKey key) throws IOException, InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException {
+        this.dataOut.flush();
+
         this.dataOut.println("0");
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
 
-        //Nonce seed
-        byte[] seed = this.cliSr.generateSeed(32);
-        this.cliSr.setSeed(seed);
-        this.dataOut.println(Base64.getEncoder().encodeToString(seed));
+        this.serPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
     }
 
     public void post(PublicKey key, String message, String[] a) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException{
+        this.dataOut.flush();
+
         //Create Signature
         Signature signature = Signature.getInstance("SHA1withRSA");
         signature.initSign(this.getPrivateKey());
@@ -166,10 +191,13 @@ public class Client{
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
         this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
+        this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
     }
 
     public void postGeneral(PublicKey key, String message, String[] a) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException{
+        this.dataOut.flush();
+
         //Create Signature
         Signature signature = Signature.getInstance("SHA1withRSA");
         signature.initSign(this.getPrivateKey());
@@ -189,11 +217,14 @@ public class Client{
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
         this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
+        this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
 
     }
 
-    public void read(PublicKey key, int number) {
+    public void read(PublicKey key, int number) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException {
+        this.dataOut.flush();
+
         this.dataOut.println("3");
         this.dataOut.println(String.valueOf(number));
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
@@ -201,7 +232,32 @@ public class Client{
         //Verify input errors
         if (this.dataIn.nextLine().equals("1")) {
             while (number > 0) {
-                System.out.println(this.dataIn.nextLine());
+                String message = this.dataIn.nextLine();
+
+                //Verify message
+                MessageDigest md = MessageDigest.getInstance("SHA-1");
+        
+                byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+                md.update(nonce);
+        
+                byte verifyMessage[] = md.digest(message.getBytes());
+        
+                //Verify signature
+                Signature signature = Signature.getInstance("SHA1withRSA");
+                signature.initVerify(serPublicKey);
+                signature.update(message.getBytes());
+                boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
+                byte hashedMessage[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+
+                if (Arrays.equals(hashedMessage, verifyMessage) && verifySignature && !(serSeeds.contains(nonce))) {
+                    serSeeds.add(nonce);
+                    System.out.println(message);
+                }
+                else {
+                    System.out.println("Message was tampered with.");
+                    break;
+                }
+
                 number--;
             }
         }
@@ -210,14 +266,41 @@ public class Client{
         }
     }
 
-    public void readGeneral(int number) {
+    public void readGeneral(int number) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException {
+        this.dataOut.flush();
+
         this.dataOut.println("4");
         this.dataOut.println(String.valueOf(number));
 
         //Verify input errors
         if (this.dataIn.nextLine().equals("1")) {
             while (number > 0) {
-                System.out.println(this.dataIn.nextLine());
+                String message = this.dataIn.nextLine();
+
+                //Verify message
+                MessageDigest md = MessageDigest.getInstance("SHA-1");
+        
+                byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+                md.update(nonce);
+        
+                byte verifyMessage[] = md.digest(message.getBytes());
+        
+                //Verify signature
+                Signature signature = Signature.getInstance("SHA1withRSA");
+                signature.initVerify(serPublicKey);
+                signature.update(message.getBytes());
+                boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
+                byte hashedMessage[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+                
+                if (Arrays.equals(hashedMessage, verifyMessage) && verifySignature && !(serSeeds.contains(nonce))) {
+                    serSeeds.add(nonce);
+                    System.out.println(message);
+                }
+                else {
+                    System.out.println("Message was tampered with.");
+                    break;
+                }
+
                 number--;
             }
         }
