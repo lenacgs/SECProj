@@ -156,20 +156,18 @@ public class Server {
                 references = new int[]{};
             }
     
-            byte hashedMessage[] = Base64.getDecoder().decode(this.dataIn.nextLine());
-    
             //Verify nonce
             MessageDigest md = MessageDigest.getInstance("SHA-1");
     
             byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
             md.update(nonce);
     
-            byte verifyMessage[] = md.digest(message.getBytes());
+            byte hashedMessage[] = md.digest(message.getBytes());
     
             //Verify signature
             Signature signature = Signature.getInstance("SHA1withRSA");
             signature.initVerify(cliPublicKey);
-            signature.update(message.getBytes());
+            signature.update(hashedMessage);
             boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
     
             //Check references validity
@@ -178,7 +176,7 @@ public class Server {
                 if (references[i]>Server.this.postCount.get()) refValidity=false;
             }
     
-            if (Arrays.equals(hashedMessage, verifyMessage) && refValidity && verifySignature && !(usersSeeds.get(cliPublicKey).contains(nonce))) {
+            if (refValidity && verifySignature && !(usersSeeds.get(cliPublicKey).contains(nonce))) {
                 usersSeeds.get(cliPublicKey).add(nonce);
                 if (boardToPost) {
                     Triplet triplet = new Triplet(message, references, Server.this.postCount);
@@ -222,17 +220,15 @@ public class Server {
                             this.dataOut.println(t.msg);
 
                             //Signature and Nonce
-                            signature.update(t.msg.getBytes());
-
                             nonce = new byte[20];
                             serSr.nextBytes(nonce);
                             this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
                             md.update(nonce);
 
                             byte hashedMessage[] = md.digest(t.msg.getBytes());
+                            signature.update(hashedMessage);
 
                             this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
-                            this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
 
                             postsToRead--;
                         }
@@ -246,17 +242,15 @@ public class Server {
                         this.dataOut.println(msg);
                         
                         //Signature and Nonce
-                        signature.update(msg.getBytes());
-
                         nonce = new byte[20];
                         serSr.nextBytes(nonce);
                         this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
                         md.update(nonce);
 
                         byte hashedMessage[] = md.digest(msg.getBytes());
+                        signature.update(hashedMessage);
 
                         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
-                        this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
 
                         postsToRead--;
                         tmp--;

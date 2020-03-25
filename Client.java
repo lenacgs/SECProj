@@ -170,11 +170,6 @@ public class Client{
     public void post(PublicKey key, String message, String[] a) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException{
         this.dataOut.flush();
 
-        //Create Signature
-        Signature signature = Signature.getInstance("SHA1withRSA");
-        signature.initSign(this.getPrivateKey());
-        signature.update(message.getBytes());
-
         //Create Nonce
         byte nonce[] = new byte[20];
         this.cliSr.nextBytes(nonce);
@@ -185,12 +180,16 @@ public class Client{
 
         byte hashedMessage[] = md.digest(message.getBytes());
 
+        //Create Signature
+        Signature signature = Signature.getInstance("SHA1withRSA");
+        signature.initSign(this.getPrivateKey());
+        signature.update(hashedMessage);
+
         //Send data to server
         this.dataOut.println("1");
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
-        this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
         this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
     }
@@ -198,11 +197,6 @@ public class Client{
     public void postGeneral(PublicKey key, String message, String[] a) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException{
         this.dataOut.flush();
 
-        //Create Signature
-        Signature signature = Signature.getInstance("SHA1withRSA");
-        signature.initSign(this.getPrivateKey());
-        signature.update(message.getBytes());
-
         //Create Nonce
         byte nonce[] = new byte[20];
         this.cliSr.nextBytes(nonce);
@@ -212,11 +206,16 @@ public class Client{
         md.update(nonce);
 
         byte hashedMessage[] = md.digest(message.getBytes());
+
+        //Create Signature
+        Signature signature = Signature.getInstance("SHA1withRSA");
+        signature.initSign(this.getPrivateKey());
+        signature.update(hashedMessage);
+
         this.dataOut.println("2");
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
-        this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
         this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
 
@@ -240,16 +239,15 @@ public class Client{
                 byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
                 md.update(nonce);
         
-                byte verifyMessage[] = md.digest(message.getBytes());
+                byte hashedMessage[] = md.digest(message.getBytes());
         
                 //Verify signature
                 Signature signature = Signature.getInstance("SHA1withRSA");
                 signature.initVerify(serPublicKey);
-                signature.update(message.getBytes());
+                signature.update(hashedMessage);
                 boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
-                byte hashedMessage[] = Base64.getDecoder().decode(this.dataIn.nextLine());
 
-                if (Arrays.equals(hashedMessage, verifyMessage) && verifySignature && !(serSeeds.contains(nonce))) {
+                if (verifySignature && !(serSeeds.contains(nonce))) {
                     serSeeds.add(nonce);
                     System.out.println(message);
                 }
@@ -283,16 +281,15 @@ public class Client{
                 byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
                 md.update(nonce);
         
-                byte verifyMessage[] = md.digest(message.getBytes());
+                byte hashedMessage[] = md.digest(message.getBytes());
         
                 //Verify signature
                 Signature signature = Signature.getInstance("SHA1withRSA");
                 signature.initVerify(serPublicKey);
-                signature.update(message.getBytes());
+                signature.update(hashedMessage);
                 boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
-                byte hashedMessage[] = Base64.getDecoder().decode(this.dataIn.nextLine());
                 
-                if (Arrays.equals(hashedMessage, verifyMessage) && verifySignature && !(serSeeds.contains(nonce))) {
+                if (verifySignature && !(serSeeds.contains(nonce))) {
                     serSeeds.add(nonce);
                     System.out.println(message);
                 }
