@@ -14,14 +14,23 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
+import java.security.PrivateKey;
+import java.security.KeyPairGenerator;
+import java.security.KeyStoreException;
+import java.security.Key;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.io.*;
+import java.security.KeyFactory;
+import java.security.spec.X509EncodedKeySpec;
+import java.security.spec.InvalidKeySpecException;
+
+
 
 public class Client{
 
-    private KeyPairGenerator cliKeyPairGenerator;
     private KeyPair cliKeyPair;
-    private PublicKey cliPublicKey;
-    private PrivateKey cliPrivateKey;
     private SecureRandom cliSr;
+    int clientId;
 
     public Scanner cliScanner; //Scan user inputs
     public Socket cliSocket; //Socket for server-client communication
@@ -35,8 +44,16 @@ public class Client{
             String cliReference;
             String[] cliReferenceArray;
             boolean actionLoop = true;
-            Client cli = new Client();
+            int id;
+            if(args.length > 0) {
+                id = Integer.parseInt(args[0]);
+            }else{
+                id = 69;
+            }
+
+            Client cli = new Client(id);
             cli.register(cli.getPublicKey());
+
 
             System.out.println("Client connected with key: " + cli.getPublicKey());
 
@@ -92,14 +109,14 @@ public class Client{
         }
     }
 
-    public Client() throws NoSuchAlgorithmException, NoSuchProviderException, IOException{
+    public Client(int id) throws NoSuchAlgorithmException, NoSuchProviderException, IOException, InvalidKeySpecException, KeyStoreException{
         //Keys
-        this.cliKeyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        this.cliKeyPairGenerator.initialize(2048);
-        this.cliKeyPair = this.cliKeyPairGenerator.generateKeyPair();
-        this.cliPublicKey = this.cliKeyPair.getPublic();
-        this.cliPrivateKey = this.cliKeyPair.getPrivate();
+
         this.cliSr = SecureRandom.getInstance("SHA1PRNG");
+
+        this.clientId = id;
+
+        this.cliKeyPair = initializeClientKeyPair("clientPublicKey" + this.clientId,"clientPrivateKey" + this.clientId);
 
         //Communication
         this.cliScanner = new Scanner(System.in);
@@ -110,11 +127,11 @@ public class Client{
     }
 
     public PublicKey getPublicKey() {
-        return this.cliPublicKey;
+        return this.cliKeyPair.getPublic();
     }
 
     public PrivateKey getPrivateKey() {
-        return this.cliPrivateKey;
+        return  this.cliKeyPair.getPrivate();
     }
 
     public void register(PublicKey key) throws IOException {
@@ -208,4 +225,58 @@ public class Client{
             System.out.println("Invalid input.");
         }
     }
+
+    public KeyPair initializeClientKeyPair(String publicKeyPath,String privateKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException {
+
+        File pubf = new File(publicKeyPath );
+        File privf = new File(privateKeyPath );
+
+        if(pubf.exists() && privf.exists()) {
+
+            FileInputStream fpub = new FileInputStream(publicKeyPath);
+            FileInputStream fpriv = new FileInputStream(privateKeyPath);
+
+            byte[] encodedPub = new byte[fpub.available()];
+            byte[] encodedPriv = new byte[fpriv.available()];
+            fpub.read(encodedPub);
+            fpub.close();
+            fpriv.read(encodedPriv);
+            fpriv.close();
+
+            X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(encodedPub);
+            KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
+            PublicKey pub = keyFacPub.generatePublic(pubSpec);
+
+
+
+            PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(encodedPriv);
+
+            KeyFactory keyFacPriv = KeyFactory.getInstance("RSA");
+            PrivateKey priv = keyFacPriv.generatePrivate(privSpec);
+
+            return new KeyPair(pub,priv);
+        }
+
+
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        KeyPair keyPair = keyGen.generateKeyPair();
+        writeKey(keyPair.getPublic(),publicKeyPath);
+        writeKey(keyPair.getPrivate(),privateKeyPath);
+        return keyPair;
+
+
+    }
+     void writeKey(Key key, String path) throws IOException, KeyStoreException {
+
+        byte[] encoded = key.getEncoded();
+        FileOutputStream fos = new FileOutputStream(path);
+        fos.write(encoded);
+        fos.close();
+
+    }
+
+
+
+
 }
