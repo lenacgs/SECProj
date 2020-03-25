@@ -28,12 +28,71 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 
+
 public class Server {
+
+    public static String filenames[] = {"registeredUsers.ser","generalBoard.ser","usersSeeds,ser","postCount.ser"};
+
     ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
     ConcurrentHashMap<Integer, Triplet> generalBoard;
     ConcurrentHashMap<PublicKey, SecureRandom> usersSeeds;
     AtomicInteger postCount;
+    
 
+    private void saveServerState(){
+        saveFile(registeredUsers,filenames[0]);
+        saveFile(generalBoard,filenames[1]);
+        saveFile(usersSeeds,filenames[2]);
+        saveFile(postCount,filenames[3]);
+    }
+
+    private void saveFile(Object o,String filename) {
+        try{
+            FileOutputStream file = new FileOutputStream(filename);
+            ObjectOutputStream out = new ObjectOutputStream(file);
+
+            out.writeObject(o);
+
+            out.close();
+            file.close();
+        } catch (FileNotFoundException fnfe){
+            System.out.println("Error writing file state for" + filename);
+        } catch(Exception e){
+            System.out.println("Unknown error saving state for " + filename);
+        }
+        
+
+    }
+
+    
+
+    private void loadServerState(){
+        Object result;
+        registeredUsers =(result = loadFile(filenames[0]))==null?new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>():(ConcurrentHashMap<PublicKey, ArrayList<Triplet>>)result;
+        generalBoard = (result = loadFile(filenames[1]))==null?new ConcurrentHashMap<Integer, Triplet>():(ConcurrentHashMap<Integer, Triplet>)result;
+        usersSeeds = (result = loadFile(filenames[2]))==null?new ConcurrentHashMap<PublicKey, SecureRandom>():(ConcurrentHashMap<PublicKey, SecureRandom>)result;
+        postCount = (result = loadFile(filenames[3]))==null?new AtomicInteger(0):(AtomicInteger)result;
+    }
+
+    private Object loadFile(String filename){
+        Object o = null;
+        try {
+            FileInputStream file = new FileInputStream(filename);
+            ObjectInputStream in = new ObjectInputStream(file);
+
+            o = in.readObject();
+
+            in.close();
+            file.close();
+        } catch (FileNotFoundException fnfe){
+            System.out.println("Error loading file state for" + filename);
+        } catch(Exception e){
+            System.out.println("Unknown error reading state for " + filename);
+        }
+        
+    
+        return o;
+    }
 
     KeyPair keyPair;
 
@@ -42,10 +101,8 @@ public class Server {
         Server server = new Server();
 
         ServerSocket serverSocket = new ServerSocket(1234);
-        server.registeredUsers = new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>();
-        server.generalBoard = new ConcurrentHashMap<Integer, Triplet>();
-        server.usersSeeds = new ConcurrentHashMap<PublicKey, SecureRandom>();
-        server.postCount = new AtomicInteger(0);
+        server.loadServerState();
+        Runtime.getRuntime().addShutdownHook(server.new UpdateServer(server));
         server.keyPair = initializeServerKeyPair("public_key","private_key");
         
 
@@ -229,6 +286,22 @@ public class Server {
         }
     }
 
+    class UpdateServer extends Thread{
+        private Server _server;
+        UpdateServer(Server server){
+            setServer(server);
+        }
+        private void setServer(Server server){
+            _server = server;
+        }
+        private Server getServer(){
+            return _server;
+        }
+        @Override
+        public void run(){
+            getServer().saveServerState();
+        }
+    }
     public static KeyPair initializeServerKeyPair(String publicKeyPath,String privateKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException {
 
         File pubf = new File(publicKeyPath);
@@ -303,4 +376,5 @@ class Triplet {
     public void setId(Object id){
         this.id = id;
     }
+
 }
