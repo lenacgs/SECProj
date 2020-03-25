@@ -56,12 +56,10 @@ public class Server {
             out.close();
             file.close();
         } catch (FileNotFoundException fnfe){
-            System.out.println("Error writing file state for" + filename);
+            System.out.println("Error writing file state for " + filename);
         } catch(Exception e){
-            System.out.println("Unknown error saving state for " + filename);
+            System.out.println("Unknown error saving state for " + filename + ":" + e.getMessage());
         }
-        
-
     }
 
     
@@ -85,12 +83,10 @@ public class Server {
             in.close();
             file.close();
         } catch (FileNotFoundException fnfe){
-            System.out.println("Error loading file state for" + filename);
+            System.out.println("Error loading file state for " + filename);
         } catch(Exception e){
-            System.out.println("Unknown error reading state for " + filename);
+            System.out.println("Unknown error reading state for " + filename + ":" + e.getMessage());
         }
-        
-    
         return o;
     }
 
@@ -357,7 +353,7 @@ public class Server {
     }
 }
 
-class Triplet {
+class Triplet implements Serializable {
     public String msg;
     public int[] postRef;
     public Object id;
