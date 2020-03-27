@@ -67,7 +67,7 @@ Ex: `java Client 3` will associate the clientPublicKey3.key and  clientPrivateKe
 
 A menu will appear with the possible command options, like this:
 
-
+![Options Menu](https://github.com/BSantosCoding/SECProj/blob/master/readmeimg/secmenu.png)
 
 ### Run the Server
 
