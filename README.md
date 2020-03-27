@@ -52,3 +52,26 @@ Both the server and each client have RSA key pairs, with a public and private ke
 These keys are used to sign the messages in order to guarantee integrity, and nonces are used to guarante protection against non-repudiation.
 
 Whenever the server or the clients are sending messages to each other, they generate a 20 bytes Nonce from a [SecureRandom](https://docs.oracle.com/javase/7/docs/api/java/security/SecureRandom.html) random number generator, and creates a hash of the message with the nonce using a [MessageDigest](https://docs.oracle.com/javase/7/docs/api/java/security/MessageDigest.html) with SHA-1 Algorithm, and then using this hashed message as the input to create an RSA Signature also using SHA as the hash algorithm for the signature. The nonces are kept in a list of previous used nonces in order to guarantee it was actually only used once.
+
+***
+
+# Run 
+
+### Run the Client
+
+One terminal is needed for each Client, 10 clients will require 10 terminals.
+Java Version 8 is needed.
+
+To run client simply run `java Client X` where you replace X with the client ID, this will associate a keypair to each client.
+Ex: `java Client 3` will associate the clientPublicKey3.key and  clientPrivateKey3 with this client.
+
+A menu will appear with the possible command options, like this:
+
+
+
+### Run the Server
+
+One terminal is needed for each Client, 10 clients will require 10 terminals.
+Java Version 8 is needed.
+
+To run server simply run `java Server` this will associate public_key.key and private_key.key with the server.
