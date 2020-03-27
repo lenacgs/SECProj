@@ -111,22 +111,27 @@ public class Server {
         server.keyPair = initializeServerKeyPair("public_key","private_key");
         
 
-        while (true) {
+        
             Socket serSocket = null;
-
             try {
-                serSocket = serverSocket.accept();
+                while (true) {
 
-                System.out.println("New User: " + serSocket);
+                    serSocket = serverSocket.accept();
 
-                ClientHandler tCli = server.new ClientHandler(serSocket, new Scanner(serSocket.getInputStream()), new PrintStream(serSocket.getOutputStream()));
-                tCli.start();
+                    System.out.println("New User: " + serSocket);
+
+                    ClientHandler tCli = server.new ClientHandler(serSocket, new Scanner(serSocket.getInputStream()), new PrintStream(serSocket.getOutputStream()));
+                    tCli.start();
+                }   
             }
             catch (Exception e) {
-                serSocket.close();
+                if (serSocket != null) serSocket.close();
                 e.printStackTrace();
             }
-        }   
+            finally {
+                serverSocket.close();
+            }
+    
     }
 
     class ClientHandler extends Thread {
@@ -305,7 +310,7 @@ public class Server {
         @Override
         public void run(){
             Server.this.saveServerState();
-            Arrays.stream(Server.this.filenames).forEach(filename -> (new File(filename + "_tmp")).delete());
+            Arrays.stream(Server.filenames).forEach(filename -> (new File(filename + "_tmp")).delete());
         }
     }
     public static KeyPair initializeServerKeyPair(String publicKeyPath,String privateKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException {
