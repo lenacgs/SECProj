@@ -1,6 +1,8 @@
 import java.io.IOException;
 import java.io.PrintStream;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.Scanner;
 import java.security.PublicKey;
@@ -14,14 +16,23 @@ import java.security.NoSuchAlgorithmException;
 import java.security.NoSuchProviderException;
 import java.security.InvalidKeyException;
 import java.security.KeyPair;
+import java.security.KeyStoreException;
+import java.security.Key;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.io.*;
+import java.security.KeyFactory;
+import java.security.spec.X509EncodedKeySpec;
+import java.security.spec.InvalidKeySpecException;
+
+
 
 public class Client{
 
-    private KeyPairGenerator cliKeyPairGenerator;
+    private PublicKey serPublicKey;
+    private ArrayList<byte[]> serSeeds;
     private KeyPair cliKeyPair;
-    private PublicKey cliPublicKey;
-    private PrivateKey cliPrivateKey;
     private SecureRandom cliSr;
+    int clientId;
 
     public Scanner cliScanner; //Scan user inputs
     public Socket cliSocket; //Socket for server-client communication
@@ -34,9 +45,18 @@ public class Client{
             String cliMessage;
             String cliReference;
             String[] cliReferenceArray;
+            String cliKeyFile;
             boolean actionLoop = true;
-            Client cli = new Client();
+            int id;
+            if(args.length > 0) {
+                id = Integer.parseInt(args[0]);
+            }else{
+                id = 69;
+            }
+
+            Client cli = new Client(id);
             cli.register(cli.getPublicKey());
+
 
             System.out.println("Client connected with key: " + cli.getPublicKey());
 
@@ -67,8 +87,28 @@ public class Client{
                         cli.postGeneral(cli.getPublicKey(), cliMessage, cliReferenceArray);
                         break;
                     case 3: 
-                        System.out.println("Number of posts to read: ");
-                        cli.read(cli.getPublicKey(), Integer.parseInt(cli.cliScanner.nextLine()));
+                        System.out.println("Public Key associated with announcement board: ");
+                        cliKeyFile = cli.cliScanner.nextLine();
+
+                        File pubf = new File(cliKeyFile);
+                        if(pubf.exists()) {
+
+                            FileInputStream fpub = new FileInputStream(cliKeyFile);
+                
+                            byte[] encodedPub = new byte[fpub.available()];
+                            fpub.read(encodedPub);
+                            fpub.close();
+                
+                            X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(encodedPub);
+                            KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
+                            PublicKey pub = keyFacPub.generatePublic(pubSpec);
+
+                            System.out.println("Number of posts to read: ");
+                            cli.read(pub, Integer.parseInt(cli.cliScanner.nextLine()));
+                        }
+                        else{
+                            System.out.println("Error with key file input.");
+                        }
                         break;
                     case 4: 
                         System.out.println("Number of posts to read: ");
@@ -92,15 +132,16 @@ public class Client{
         }
     }
 
-    public Client() throws NoSuchAlgorithmException, NoSuchProviderException, IOException{
+    public Client(int id) throws NoSuchAlgorithmException, NoSuchProviderException, IOException, InvalidKeySpecException, KeyStoreException{
         //Keys
-        this.cliKeyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        this.cliKeyPairGenerator.initialize(2048);
-        this.cliKeyPair = this.cliKeyPairGenerator.generateKeyPair();
-        this.cliPublicKey = this.cliKeyPair.getPublic();
-        this.cliPrivateKey = this.cliKeyPair.getPrivate();
+
         this.cliSr = SecureRandom.getInstance("SHA1PRNG");
 
+        this.clientId = id;
+
+        this.cliKeyPair = initializeClientKeyPair("clientPublicKey" + this.clientId + ".key","clientPrivateKey" + this.clientId + ".key");
+
+        this.serSeeds = new ArrayList<byte[]>();
         //Communication
         this.cliScanner = new Scanner(System.in);
         this.cliSocket = new Socket("127.0.0.1", 1234);
@@ -110,28 +151,24 @@ public class Client{
     }
 
     public PublicKey getPublicKey() {
-        return this.cliPublicKey;
+        return this.cliKeyPair.getPublic();
     }
 
     public PrivateKey getPrivateKey() {
-        return this.cliPrivateKey;
+        return  this.cliKeyPair.getPrivate();
     }
 
-    public void register(PublicKey key) throws IOException {
+    public void register(PublicKey key) throws IOException, InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException {
+        this.dataOut.flush();
+
         this.dataOut.println("0");
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
 
-        //Nonce seed
-        byte[] seed = this.cliSr.generateSeed(32);
-        this.cliSr.setSeed(seed);
-        this.dataOut.println(Base64.getEncoder().encodeToString(seed));
+        this.serPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
     }
 
     public void post(PublicKey key, String message, String[] a) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException{
-        //Create Signature
-        Signature signature = Signature.getInstance("SHA1withRSA");
-        signature.initSign(this.getPrivateKey());
-        signature.update(message.getBytes());
+        this.dataOut.flush();
 
         //Create Nonce
         byte nonce[] = new byte[20];
@@ -142,21 +179,23 @@ public class Client{
         md.update(nonce);
 
         byte hashedMessage[] = md.digest(message.getBytes());
+
+        //Create Signature
+        Signature signature = Signature.getInstance("SHA1withRSA");
+        signature.initSign(this.getPrivateKey());
+        signature.update(hashedMessage);
 
         //Send data to server
         this.dataOut.println("1");
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
-        this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
+        this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
     }
 
     public void postGeneral(PublicKey key, String message, String[] a) throws NoSuchAlgorithmException, SignatureException, InvalidKeyException{
-        //Create Signature
-        Signature signature = Signature.getInstance("SHA1withRSA");
-        signature.initSign(this.getPrivateKey());
-        signature.update(message.getBytes());
+        this.dataOut.flush();
 
         //Create Nonce
         byte nonce[] = new byte[20];
@@ -167,16 +206,24 @@ public class Client{
         md.update(nonce);
 
         byte hashedMessage[] = md.digest(message.getBytes());
+
+        //Create Signature
+        Signature signature = Signature.getInstance("SHA1withRSA");
+        signature.initSign(this.getPrivateKey());
+        signature.update(hashedMessage);
+
         this.dataOut.println("2");
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
         this.dataOut.println(message);
         this.dataOut.println(String.join(", ", a));
-        this.dataOut.println(Base64.getEncoder().encodeToString(hashedMessage));
+        this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
         this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
 
     }
 
-    public void read(PublicKey key, int number) {
+    public void read(PublicKey key, int number) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException {
+        this.dataOut.flush();
+
         this.dataOut.println("3");
         this.dataOut.println(String.valueOf(number));
         this.dataOut.println(Base64.getEncoder().encodeToString(key.getEncoded()));
@@ -184,7 +231,31 @@ public class Client{
         //Verify input errors
         if (this.dataIn.nextLine().equals("1")) {
             while (number > 0) {
-                System.out.println(this.dataIn.nextLine());
+                String message = this.dataIn.nextLine();
+
+                //Verify message
+                MessageDigest md = MessageDigest.getInstance("SHA-1");
+        
+                byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+                md.update(nonce);
+        
+                byte hashedMessage[] = md.digest(message.getBytes());
+        
+                //Verify signature
+                Signature signature = Signature.getInstance("SHA1withRSA");
+                signature.initVerify(serPublicKey);
+                signature.update(hashedMessage);
+                boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
+
+                if (verifySignature && !(serSeeds.contains(nonce))) {
+                    serSeeds.add(nonce);
+                    System.out.println(message);
+                }
+                else {
+                    System.out.println("Message was tampered with.");
+                    break;
+                }
+
                 number--;
             }
         }
@@ -193,14 +264,40 @@ public class Client{
         }
     }
 
-    public void readGeneral(int number) {
+    public void readGeneral(int number) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException {
+        this.dataOut.flush();
+
         this.dataOut.println("4");
         this.dataOut.println(String.valueOf(number));
 
         //Verify input errors
         if (this.dataIn.nextLine().equals("1")) {
             while (number > 0) {
-                System.out.println(this.dataIn.nextLine());
+                String message = this.dataIn.nextLine();
+
+                //Verify message
+                MessageDigest md = MessageDigest.getInstance("SHA-1");
+        
+                byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+                md.update(nonce);
+        
+                byte hashedMessage[] = md.digest(message.getBytes());
+        
+                //Verify signature
+                Signature signature = Signature.getInstance("SHA1withRSA");
+                signature.initVerify(serPublicKey);
+                signature.update(hashedMessage);
+                boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
+                
+                if (verifySignature && !(serSeeds.contains(nonce))) {
+                    serSeeds.add(nonce);
+                    System.out.println(message);
+                }
+                else {
+                    System.out.println("Message was tampered with.");
+                    break;
+                }
+
                 number--;
             }
         }
@@ -208,4 +305,58 @@ public class Client{
             System.out.println("Invalid input.");
         }
     }
+
+    public KeyPair initializeClientKeyPair(String publicKeyPath,String privateKeyPath) throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, KeyStoreException {
+
+        File pubf = new File(publicKeyPath );
+        File privf = new File(privateKeyPath );
+
+        if(pubf.exists() && privf.exists()) {
+
+            FileInputStream fpub = new FileInputStream(publicKeyPath);
+            FileInputStream fpriv = new FileInputStream(privateKeyPath);
+
+            byte[] encodedPub = new byte[fpub.available()];
+            byte[] encodedPriv = new byte[fpriv.available()];
+            fpub.read(encodedPub);
+            fpub.close();
+            fpriv.read(encodedPriv);
+            fpriv.close();
+
+            X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(encodedPub);
+            KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
+            PublicKey pub = keyFacPub.generatePublic(pubSpec);
+
+
+
+            PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(encodedPriv);
+
+            KeyFactory keyFacPriv = KeyFactory.getInstance("RSA");
+            PrivateKey priv = keyFacPriv.generatePrivate(privSpec);
+
+            return new KeyPair(pub,priv);
+        }
+
+
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("RSA");
+        keyGen.initialize(2048);
+        KeyPair keyPair = keyGen.generateKeyPair();
+        writeKey(keyPair.getPublic(),publicKeyPath);
+        writeKey(keyPair.getPrivate(),privateKeyPath);
+        return keyPair;
+
+
+    }
+     void writeKey(Key key, String path) throws IOException, KeyStoreException {
+
+        byte[] encoded = key.getEncoded();
+        FileOutputStream fos = new FileOutputStream(path);
+        fos.write(encoded);
+        fos.close();
+
+    }
+
+
+
+
 }

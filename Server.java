@@ -38,7 +38,7 @@ public class Server {
 
     ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
     ConcurrentHashMap<Integer, Triplet> generalBoard;
-    ConcurrentHashMap<PublicKey, SecureRandom> usersSeeds;
+    ConcurrentHashMap<PublicKey, ArrayList<byte[]>> usersSeeds;
     AtomicInteger postCount;
     
 
@@ -74,7 +74,7 @@ public class Server {
         Object result;
         registeredUsers = (result = loadFile(filenames[0]))==null?new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>():(ConcurrentHashMap<PublicKey, ArrayList<Triplet>>)result;
         generalBoard = (result = loadFile(filenames[1]))==null?new ConcurrentHashMap<Integer, Triplet>():(ConcurrentHashMap<Integer, Triplet>)result;
-        usersSeeds = (result = loadFile(filenames[2]))==null?new ConcurrentHashMap<PublicKey, SecureRandom>():(ConcurrentHashMap<PublicKey, SecureRandom>)result;
+        usersSeeds = (result = loadFile(filenames[2]))==null?new ConcurrentHashMap<PublicKey, ArrayList<byte[]>>():(ConcurrentHashMap<PublicKey, ArrayList<byte[]>>)result;
         postCount = (result = loadFile(filenames[3]))==null?new AtomicInteger(0):(AtomicInteger)result;
     }
 
@@ -95,6 +95,7 @@ public class Server {
         }
         return o;
     }
+    SecureRandom serSr;
 
     KeyPair keyPair;
 
@@ -109,7 +110,7 @@ public class Server {
         
         
         server.keyPair = initializeServerKeyPair("public_key","private_key");
-        
+        server.serSr = SecureRandom.getInstance("SHA1PRNG");
 
         
             Socket serSocket = null;
@@ -191,17 +192,18 @@ public class Server {
     
 
         public void registerClient() throws NoSuchAlgorithmException, InvalidKeyException, InvalidKeySpecException{
+            this.dataOut.flush();
+
             //Extract Public Key
             PublicKey cliPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
-            byte[] cliSeed = Base64.getDecoder().decode(this.dataIn.nextLine());
             
             //Init hashmaps with PublicKey obtained
             ArrayList<Triplet> tmpTripletList = new ArrayList<Triplet>();
-            SecureRandom sr = SecureRandom.getInstance("SHA1PRNG");
-            sr.setSeed(cliSeed);
     
-            Server.this.usersSeeds.put(cliPublicKey, sr);
+            Server.this.usersSeeds.put(cliPublicKey, new ArrayList<byte[]>());
             Server.this.registeredUsers.put(cliPublicKey, tmpTripletList);
+
+            this.dataOut.println(Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
     
             //Sucess
             System.out.println("Client connected.");
@@ -209,6 +211,8 @@ public class Server {
         }
     
         public void post(boolean boardToPost) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException{
+            this.dataOut.flush();
+
             //Extract arguments
             PublicKey cliPublicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(this.dataIn.nextLine())));
             String message = this.dataIn.nextLine();
@@ -223,21 +227,18 @@ public class Server {
                 references = new int[]{};
             }
     
-            byte hashedMessage[] = Base64.getDecoder().decode(this.dataIn.nextLine());
-    
             //Verify nonce
             MessageDigest md = MessageDigest.getInstance("SHA-1");
     
-            byte nonce[] = new byte[20];
-            Server.this.usersSeeds.get(cliPublicKey).nextBytes(nonce);
+            byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
             md.update(nonce);
     
-            byte verifyMessage[] = md.digest(message.getBytes());
+            byte hashedMessage[] = md.digest(message.getBytes());
     
             //Verify signature
             Signature signature = Signature.getInstance("SHA1withRSA");
             signature.initVerify(cliPublicKey);
-            signature.update(message.getBytes());
+            signature.update(hashedMessage);
             boolean verifySignature = signature.verify(Base64.getDecoder().decode(this.dataIn.nextLine()));
     
             //Check references validity
@@ -246,10 +247,8 @@ public class Server {
                 if (references[i]>Server.this.postCount.get()) refValidity=false;
             }
     
-            System.out.println(refValidity);
-            System.out.println(verifySignature);
-    
-            if (Arrays.equals(hashedMessage, verifyMessage) && refValidity && verifySignature) {
+            if (refValidity && verifySignature && !(usersSeeds.get(cliPublicKey).contains(nonce))) {
+                usersSeeds.get(cliPublicKey).add(nonce);
                 if (boardToPost) {
                     Triplet triplet = new Triplet(message, references, Server.this.postCount);
                     Server.this.registeredUsers.get(cliPublicKey).add(triplet);
@@ -274,7 +273,19 @@ public class Server {
             Server.this.saveFile(postCount, Server.filenames[3]);
         }
     
-        public void read(boolean boardToRead) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException{
+        public void read(boolean boardToRead) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException {
+            this.dataOut.flush();
+
+            //Create Signature
+            Signature signature = Signature.getInstance("SHA1withRSA");
+            signature.initSign(keyPair.getPrivate());
+
+            //Create Nonce
+            byte nonce[];
+
+            //Message Digest
+            MessageDigest md = MessageDigest.getInstance("SHA-1");
+
             int postsToRead = Integer.parseInt(this.dataIn.nextLine());
             if (postsToRead <= Server.this.postCount.get()) {
                 this.dataOut.println("1");
@@ -285,6 +296,18 @@ public class Server {
                     for(Triplet t : messageList) {
                         if (postsToRead > 0) {
                             this.dataOut.println(t.msg);
+
+                            //Signature and Nonce
+                            nonce = new byte[20];
+                            serSr.nextBytes(nonce);
+                            this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
+                            md.update(nonce);
+
+                            byte hashedMessage[] = md.digest(t.msg.getBytes());
+                            signature.update(hashedMessage);
+
+                            this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
+
                             postsToRead--;
                         }
                     }
@@ -293,13 +316,29 @@ public class Server {
                     ArrayList<Integer> tmpList = new ArrayList<Integer>(Server.this.generalBoard.keySet());
                     int tmp = tmpList.size();
                     while(postsToRead > 0) {
-                        this.dataOut.println(Server.this.generalBoard.get(tmpList.get(tmp-1)).msg);
+                        String msg = Server.this.generalBoard.get(tmpList.get(tmp-1)).msg;
+                        this.dataOut.println(msg);
+                        
+                        //Signature and Nonce
+                        nonce = new byte[20];
+                        serSr.nextBytes(nonce);
+                        this.dataOut.println(Base64.getEncoder().encodeToString(nonce));
+                        md.update(nonce);
+
+                        byte hashedMessage[] = md.digest(msg.getBytes());
+                        signature.update(hashedMessage);
+
+                        this.dataOut.println(Base64.getEncoder().encodeToString(signature.sign()));
+
                         postsToRead--;
                         tmp--;
                     }
                 }
             }
             else {
+                if (boardToRead) {
+                    this.dataIn.nextLine();
+                }
                 this.dataOut.println("0");
                 System.out.println("Not enough posts to read.");
             }
@@ -333,8 +372,6 @@ public class Server {
             X509EncodedKeySpec pubSpec = new X509EncodedKeySpec(encodedPub);
             KeyFactory keyFacPub = KeyFactory.getInstance("RSA");
             PublicKey pub = keyFacPub.generatePublic(pubSpec);
-
-
 
             PKCS8EncodedKeySpec privSpec = new PKCS8EncodedKeySpec(encodedPriv);
 
