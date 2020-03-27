@@ -40,3 +40,15 @@
 
     Input for function will be asked in terminal in this order:
     * Number (A single number. Ex: 10) - Last X posts to read where X is the number input
+
+***
+
+# Explanation
+
+This project needed to guarantee that the messages sent through unsecure channels had both integrity and non-repudiation.
+
+Both the server and each client have RSA key pairs, with a public and private key, if its the first time the client or server are being ran a public and private RSA keys are generated and saved to keystore files.
+
+These keys are used to sign the messages in order to guarantee integrity, and nonces are used to guarante protection against non-repudiation.
+
+Whenever the server or the clients are sending messages to each other, they generate a 20 bytes Nonce from a [SecureRandom](https://docs.oracle.com/javase/7/docs/api/java/security/SecureRandom.html) random number generator, and creates a hash of the message with the nonce using a [MessageDigest](https://docs.oracle.com/javase/7/docs/api/java/security/MessageDigest.html) with SHA-1 Algorithm, and then using this hashed message as the input to create an RSA Signature also using SHA as the hash algorithm for the signature. The nonces are kept in a list of previous used nonces in order to guarantee it was actually only used once.
