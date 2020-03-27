@@ -2,6 +2,9 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.InvalidKeyException;
 import java.security.KeyFactory;
 import java.security.MessageDigest;
@@ -48,21 +51,24 @@ public class Server {
 
     private void saveFile(Object o,String filename) {
         try{
-            FileOutputStream file = new FileOutputStream(filename);
+            FileOutputStream file = new FileOutputStream(filename + "_tmp");
             ObjectOutputStream out = new ObjectOutputStream(file);
 
             out.writeObject(o);
 
             out.close();
             file.close();
+
+            Files.move(Paths.get( filename + "_tmp"), Paths.get(filename), StandardCopyOption.ATOMIC_MOVE);
+
         } catch (FileNotFoundException fnfe){
             System.out.println("Error writing file state for " + filename);
+        } catch(IOException ioe){
+            System.out.println("Error updating temp file to " + filename);
         } catch(Exception e){
             System.out.println("Unknown error saving state for " + filename + ":" + e.getMessage());
         }
     }
-
-    
 
     private void loadServerState(){
         Object result;
@@ -194,7 +200,7 @@ public class Server {
     
             //Sucess
             System.out.println("Client connected.");
-            Server.this.saveFile(registeredUsers, Server.filenames[0] + "_tmp");
+            Server.this.saveFile(registeredUsers, Server.filenames[0]);
         }
     
         public void post(boolean boardToPost) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException, SignatureException{
@@ -256,11 +262,11 @@ public class Server {
             }
             
             if(boardToPost){
-                Server.this.saveFile(usersSeeds, Server.filenames[2] + "_tmp");
+                Server.this.saveFile(usersSeeds, Server.filenames[2]);
             } else {
-                Server.this.saveFile(generalBoard, Server.filenames[1] + "_tmp");
+                Server.this.saveFile(generalBoard, Server.filenames[1]);
             }
-            Server.this.saveFile(postCount, Server.filenames[3] + "_tmp");
+            Server.this.saveFile(postCount, Server.filenames[3]);
         }
     
         public void read(boolean boardToRead) throws InvalidKeyException, InvalidKeySpecException, NoSuchAlgorithmException{
