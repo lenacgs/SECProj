@@ -1,3 +1,5 @@
+<p style="text-align: center;">
+
 # Highly Dependable Systems
 
 ## Sistemas de Elevada Confiabilidade
@@ -5,6 +7,7 @@
 
 #### Project - Stage 1
 #### Dependable Public Announcement Server
+</p>
 
 ***
 
