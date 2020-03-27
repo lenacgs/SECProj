@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Server {
 
-    public static String filenames[] = {"registeredUsers.ser","generalBoard.ser","usersSeeds,ser","postCount.ser"};
+    public static String filenames[] = {"registeredUsers.ser","generalBoard.ser","usersSeeds.ser","postCount.ser"};
 
     ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
     ConcurrentHashMap<Integer, Triplet> generalBoard;
@@ -109,7 +109,7 @@ public class Server {
         Runtime.getRuntime().addShutdownHook(server.new UpdateServer());
         
         
-        server.keyPair = initializeServerKeyPair("public_key","private_key");
+        server.keyPair = initializeServerKeyPair("public_key.key","private_key.key");
         server.serSr = SecureRandom.getInstance("SHA1PRNG");
 
         
