@@ -35,11 +35,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class Server {
 
-    public static String filenames[] = {"registeredUsers.ser","generalBoard.ser","usersSeeds,ser","postCount.ser"};
+    public static String filenames[] = {"registeredUsers.ser","generalBoard.ser","usersSeeds.ser","postCount.ser"};
 
     ConcurrentHashMap<PublicKey, ArrayList<Triplet>> registeredUsers;
     ConcurrentHashMap<Integer, Triplet> generalBoard;
-    ConcurrentHashMap<PublicKey, ArrayList<byte[]>> usersSeeds;
+    ConcurrentHashMap<PublicKey, ArrayList<String>> usersSeeds;
     AtomicInteger postCount;
     
 
@@ -76,7 +76,7 @@ public class Server {
         Object result;
         registeredUsers = (result = loadFile(filenames[0]))==null?new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>():(ConcurrentHashMap<PublicKey, ArrayList<Triplet>>)result;
         generalBoard = (result = loadFile(filenames[1]))==null?new ConcurrentHashMap<Integer, Triplet>():(ConcurrentHashMap<Integer, Triplet>)result;
-        usersSeeds = (result = loadFile(filenames[2]))==null?new ConcurrentHashMap<PublicKey, ArrayList<byte[]>>():(ConcurrentHashMap<PublicKey, ArrayList<byte[]>>)result;
+        usersSeeds = (result = loadFile(filenames[2]))==null?new ConcurrentHashMap<PublicKey, ArrayList<String>>():(ConcurrentHashMap<PublicKey, ArrayList<String>>)result;
         postCount = (result = loadFile(filenames[3]))==null?new AtomicInteger(0):(AtomicInteger)result;
     }
 
@@ -112,7 +112,7 @@ public class Server {
         Runtime.getRuntime().addShutdownHook(server.new UpdateServer());
         
         
-        server.keyPair = initializeServerKeyPair("public_key","private_key");
+        server.keyPair = initializeServerKeyPair("public_key.key","private_key.key");
         server.serSr = SecureRandom.getInstance("SHA1PRNG");
 
         
@@ -203,13 +203,13 @@ public class Server {
             //Init hashmaps with PublicKey obtained
             ArrayList<Triplet> tmpTripletList = new ArrayList<Triplet>();
     
-            Server.this.usersSeeds.put(cliPublicKey, new ArrayList<byte[]>());
-            Server.this.registeredUsers.put(cliPublicKey, tmpTripletList);
+            Server.this.usersSeeds.putIfAbsent(cliPublicKey, new ArrayList<String>());
+            Server.this.registeredUsers.putIfAbsent(cliPublicKey, tmpTripletList);
 
             this.dataOut.println(Base64.getEncoder().encodeToString(keyPair.getPublic().getEncoded()));
     
             //Sucess
-            System.out.println("Client connected.");
+            System.out.println("Client connected.\n");
             Server.this.saveFile(registeredUsers, Server.filenames[0]);
         }
     
@@ -233,7 +233,9 @@ public class Server {
             //Verify nonce
             MessageDigest md = MessageDigest.getInstance("SHA-1");
     
-            byte nonce[] = Base64.getDecoder().decode(this.dataIn.nextLine());
+            String nonceS = this.dataIn.nextLine();
+
+            byte[] nonce = Base64.getDecoder().decode(nonceS);
             md.update(nonce);
     
             byte hashedMessage[] = md.digest(message.getBytes());
@@ -250,22 +252,27 @@ public class Server {
                 if (references[i]>Server.this.postCount.get()) refValidity=false;
             }
     
-            if (refValidity && verifySignature && !(usersSeeds.get(cliPublicKey).contains(nonce))) {
-                usersSeeds.get(cliPublicKey).add(nonce);
+            boolean nonceValidity = !(usersSeeds.get(cliPublicKey).contains(nonceS));
+
+            System.out.println("References valid: " + refValidity);
+            System.out.println("Signature valid: " + verifySignature);
+            System.out.println("Nonce valid: " + nonceValidity);
+            if (refValidity && verifySignature && nonceValidity) {
+                usersSeeds.get(cliPublicKey).add(nonceS);
                 if (boardToPost) {
                     Triplet triplet = new Triplet(message, references, Server.this.postCount);
                     Server.this.registeredUsers.get(cliPublicKey).add(triplet);
-                    System.out.println("Message posted to Announcement.");
+                    System.out.println("Message posted to Announcement.\n");
                 }
                 else {
                     Triplet triplet = new Triplet(message, references, cliPublicKey);
                     Server.this.generalBoard.put(Server.this.postCount.get(), triplet);
-                    System.out.println("Message posted to general.");
+                    System.out.println("Message posted to general.\n");
                 }
                 Server.this.postCount.incrementAndGet();
             }
             else {
-                System.out.println("Message ignored.");
+                System.out.println("Message ignored.\n");
             }
             
             if(boardToPost){
