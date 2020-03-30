@@ -22,6 +22,7 @@ import java.security.KeyStoreException;
 import java.security.Key;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.io.*;
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Base64;
@@ -69,7 +70,8 @@ public class Server {
             System.out.println("Unknown error saving state for " + filename + ":" + e.getMessage());
         }
     }
-
+    
+    @SuppressWarnings("unchecked")
     private void loadServerState(){
         Object result;
         registeredUsers = (result = loadFile(filenames[0]))==null?new ConcurrentHashMap<PublicKey, ArrayList<Triplet>>():(ConcurrentHashMap<PublicKey, ArrayList<Triplet>>)result;
@@ -89,7 +91,8 @@ public class Server {
             in.close();
             file.close();
         } catch (FileNotFoundException fnfe){
-            System.out.println("Error loading file state for " + filename);
+            //Situação de primeira vez correr a aplicação sem gravar previamente os ficheiros
+            //System.out.println("Error loading file state for " + filename);
         } catch(Exception e){
             System.out.println("Unknown error reading state for " + filename + ":" + e.getMessage());
         }
