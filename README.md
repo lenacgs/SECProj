@@ -57,6 +57,14 @@ Whenever the server or the clients are sending messages to each other, they gene
 
 # Run 
 
+### To create a fresh setup
+
+Open a terminal and run the two following commands:
+* `chmod +x freshSetup.sh`
+* `./freshsetup.sh`
+
+This will erase all past key and serialization files, and compile the java classes
+
 ### Run the Client
 
 One terminal is needed for each Client, 10 clients will require 10 terminals.
