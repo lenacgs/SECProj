@@ -75,3 +75,14 @@ One terminal is needed for each Client, 10 clients will require 10 terminals.
 Java Version 8 is needed.
 
 To run server simply run `java Server` this will associate public_key.key and private_key.key with the server.
+
+### Run the Test
+
+Run one server in one terminal, and on another terminal run the client with the following command: `java Client 1 1`
+
+The last argument turns the test flag on, and tests the security logic implemented, testing the following cases:
+* A message signed by the wrong person
+* A message with invalid references
+* A message sent with a nonce that had already been used (replay attack)
+
+The results can be seen on the server terminal.
